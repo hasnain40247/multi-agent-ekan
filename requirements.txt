@@ -1,0 +1,5 @@
+numpy
+pettingzoo
+supersuit
+pygame
+torch
