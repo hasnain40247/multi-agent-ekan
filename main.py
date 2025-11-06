@@ -10,7 +10,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stuff")
     parser.add_argument("--n_agents", type=int, default=3, help="Number of agents")
     parser.add_argument("--max_cycles", type=int, default=25, help="Maximum number of cycles per episode")
-    parser.add_argument("--continuous", action="store_true", help="Use continuous actions")
+    parser.add_argument("--continuous", action="store_false", help="Use continuous actions")
     # parser.add_argument("--render", action="store_true", help="Enable rendering (human mode)") commenting out to test stuff
     parser.add_argument("--steps", type=int, default=50, help="Number of visualization steps")
     parser.add_argument("--delay", type=float, default=0, help="Delay between frames")
