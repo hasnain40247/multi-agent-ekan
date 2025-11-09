@@ -22,7 +22,8 @@ class PolicyNet(nn.Module):
         super().__init__()
 
         self.fc = nn.Sequential(nn.Linear(obs_dim, hidden_dim), nn.ReLU())
-        # pretty basic stuff we may have to train this better or maybe even use a CNN but maybe stick to an NN if we're going towards KANs?
+        # pretty basic stuff we may have to train this better or maybe even
+        # use a CNN but maybe stick to an NN if we're going towards KANs?
         self.actor_mean = nn.Linear(hidden_dim, action_dim)
         self.actor_logstd = nn.Parameter(torch.zeros(action_dim))
         self.critic = nn.Linear(hidden_dim, 1)
@@ -79,7 +80,11 @@ class PolicyNet(nn.Module):
         dist = torch.distributions.Normal(mean, std)
         r_action = dist.rsample()
         action = torch.tanh(r_action)
+        action = 0.5 * (action + 1.0)
+
         log_prob = self._tanh_log_prob(r_action, mean, std)
+        k_log2 = mean.shape[-1] * torch.log(torch.tensor(2.0, device=mean.device))
+        log_prob = log_prob + k_log2
 
         if single:
             return action.squeeze(0), log_prob.squeeze(0)
