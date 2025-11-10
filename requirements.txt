@@ -3,3 +3,4 @@ pettingzoo
 supersuit
 pygame
 torch
+wandb
