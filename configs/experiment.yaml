@@ -1,0 +1,40 @@
+run:
+  mode: train  
+  seed: 42
+
+env:
+  n_agents: 3
+  max_cycles: 25
+  continuous_actions: true
+  visualize:
+    steps: 50
+    delay: 0.0
+    manual: false
+
+training:
+  epochs: 100
+  steps_per_epoch: 1024
+  gamma: 0.99
+  lr: 0.0003
+  value_coef: 0.5
+  entropy_coef: 0.01
+  max_grad_norm: 0.5
+
+model:
+  name: kan              # <- active choice
+  hidden_dim: 64         # <- shared default, between all models, overridden by params below (if any)
+
+  mlp:                   # <- only used when name: mlp
+    hidden_dim: 128
+
+  kan:                   # <- only used when name: kan
+    hidden_dim: 64
+    grid: 16
+    k: 3
+    kw: {}
+
+wandb:
+  enabled: true
+  project: multi-agent-ekan
+  name: null   
+  entity: null
