@@ -5,7 +5,7 @@ import torch.optim as optim
 LOG_STD_MIN, LOG_STD_MAX = -5.0, 2.0
 
 
-class PolicyNet(nn.Module):
+class MLPPolicyNet(nn.Module):
     """
     Kinda simple Actor-Critic network. I was just trying to have a shared backbone
     that feeds into both the policy and value function.
