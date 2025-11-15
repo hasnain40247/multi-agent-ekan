@@ -3,20 +3,14 @@ import torch.nn as nn
 import torch.optim as optim
 import logging
 import numpy as np
+from utils import pick_device
 
 try:
     import wandb
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
-
-def pick_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    else:
-        return "cpu"
 
 
 class MAPPO:

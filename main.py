@@ -9,43 +9,14 @@ from environment.mpe import MPEEnvironment
 from mappo.mappo import MAPPO
 from policy_networks.registry import POLICY_REGISTRY
 
-
-def load_config(path: str) -> dict:
-    """Loads config YAML"""
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-
-def deep_update(base: dict, override: dict) -> dict:
-    """Recursively merge override into base."""
-    for k, v in override.items():
-        if isinstance(v, dict) and isinstance(base.get(k), dict):
-            deep_update(base[k], v)
-        else:
-            base[k] = v
-    return base
-
-
-def parse_overrides(pairs):
-    """
-    Override values in config from CLI: --override training.lr=0.0001
-    """
-    result = {}
-    for p in pairs or []:
-        if "=" not in p:
-            continue
-        key, sval = p.split("=", 1)
-        try:
-            val = json.loads(sval)
-        except Exception:
-            val = sval
-
-        cur = result
-        parts = key.split(".")
-        for subk in parts[:-1]:
-            cur = cur.setdefault(subk, {})
-        cur[parts[-1]] = val
-    return result
+from utils import (
+    load_config,
+    parse_overrides,
+    deep_update,
+    pick_device,
+    set_global_seed,
+    setup_logging,
+)
 
 
 def build_env_from_cfg(cfg_env: dict, render_mode=None):
@@ -86,15 +57,6 @@ def build_policy_from_cfg(model_cfg: dict, obs_dim: int, act_dim: int):
     return POLICY_REGISTRY[name](obs_dim, act_dim, merged)
 
 
-def pick_device():
-    if torch.cuda.is_available():
-        return "cuda"
-    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
-    else:
-        return "cpu"
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MPE trainer")
     parser.add_argument("--config", type=str, required=True, help="Path to YAML config")
@@ -111,13 +73,7 @@ if __name__ == "__main__":
     cfg = deep_update(cfg, overrides)
 
     # Seed
-    if "seed" in cfg.get("run", {}):
-        import numpy as np, random
-
-        seed = int(cfg["run"]["seed"])
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
+    set_global_seed(cfg.get("run", {}).get("seed", None))
 
     mode = cfg["run"]["mode"]
     env_cfg = cfg["env"]
