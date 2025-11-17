@@ -21,7 +21,7 @@ training:
   max_grad_norm: 0.5
 
 model:
-  name: kan              # <- active choice
+  name: ekan              # <- active choice
   hidden_dim: 64         # <- shared default, between all models, overridden by params below (if any)
 
   mlp:                   # <- only used when name: mlp
@@ -32,6 +32,18 @@ model:
     grid: 16
     k: 3
     kw: {}
+
+  ekan:
+    group: "SO2"
+    rep_in:
+      vectors: 9
+      scalars: 0
+    rep_out:
+      scalars: 64
+    ekan_kwargs:
+      width: [64]
+      grid: 16
+      k: 3
 
 wandb:
   enabled: true
