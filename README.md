@@ -20,14 +20,24 @@ We use the Multi-Agent Particle Environment (MPE) from PettingZoo, specifically 
 ├── environment/             
 │   ├── __init__.py
 │   └── mpe.py                # Multi-agent simple_spread_v3
+├── ekan/                     # dependancy for ekan
+│   └── ...
 ├── mappo/                  
 │   ├── __init__.py
 │   └── mappo.py              # MAPPO framework
 ├── policy_networks/           
 │   ├── __init__.py
+│   ├── ekan_policy_net.py    # equivariant kan policy network
 │   ├── kan_policy_net.py     # vanilla kan policy network
 │   ├── mlp_policy_net.py     # mlp policy network
-│   └── registry.py        
+│   └── registry.py   
+├── utils/           
+│   ├── __init__.py
+│   ├── config.py
+│   ├── device.py
+│   ├── ekans.py
+│   ├── logging.py
+│   └── seed.py         
 ├── main.py                   # Main entry point
 ├── README.md                 
 └── requirements.txt          # Python dependencies
@@ -48,6 +58,12 @@ We use the Multi-Agent Particle Environment (MPE) from PettingZoo, specifically 
    ```bash
    pip install -r requirements.txt
    ```
+5. **Install Adan for ekan to work**
+    ```bash
+    git clone https://github.com/sail-sg/Adan.git
+    cd Adan
+    python3 setup.py install --unfused
+    ```
 
 ## Usage
 
@@ -144,3 +160,42 @@ Top-level fields under `model` act as **shared defaults** across all backbones. 
 | `entity`  | str \| null | `null`              | Team/entity (optional). |
 
 **Example override:** `--override wandb.enabled=false`
+
+
+### `model.ekan` (when `name: ekan`)
+
+Use EKAN as an equivariant backbone. You must specify a **group** and how the input/output representations are constructed.  
+**Constraint:** `rep_in.size()` must equal the environment observation dimension (`obs_dim`). For many groups,  
+`rep_in.size() = rep_in.vectors * d + rep_in.scalars`, where `d` is the group’s vector dimension (e.g., `d=2` for `SO2`).
+
+| Key                      | Type         | Default       | Description |
+|--------------------------|--------------|---------------|-------------|
+| `group`                  | enum         | —             | Equivariance group. Supported: `SO2`, `O2`, `SO13`, `SO13p`, `Lorentz`. |
+| `rep_in.vectors`         | int          | —             | Number of vector-type channels in the input rep. Each contributes `d` dims (e.g., `2` for `SO2`). |
+| `rep_in.scalars`         | int          | `0`           | Number of scalar channels in the input rep (each contributes `1` dim). |
+| `rep_out.scalars`        | int          | `hidden_dim`  | Output latent scalar channels (total latent width = this value). |
+| `ekan_kwargs.width`      | list[int]    | `[64]`        | Hidden widths for EKAN’s internal layers. **Must be a list** (e.g., `[64]`, `[128, 128]`). |
+| `ekan_kwargs.grid`       | int          | `16`          | Spline grid size for EKAN layers. |
+| `ekan_kwargs.k`          | int          | `3`           | Spline order/degree-like hyperparameter. |
+| `ekan_kwargs.grid_eps`   | float        | `1.0`         | Grid smoothing parameter (if exposed by your EKAN build). |
+| `ekan_kwargs.grid_range` | list[float]  | `[-1, 1]`     | Grid range (if exposed). |
+| `ekan_kwargs.device`     | str          | auto          | Device for EKAN internals; usually auto-set from your trainer. |
+| `ekan_kwargs.seed`       | int          | —             | Random seed for EKAN module (optional). |
+| `ekan_kwargs.classify`   | bool         | `false`       | Classification head toggle in raw EKAN (unused for actor-critic). |
+
+**Example (SO2, 18-D obs as 9 vectors × 2 dims):**
+```yaml
+model:
+  name: ekan
+  hidden_dim: 64
+  ekan:
+    group: "SO2"
+    rep_in:
+      vectors: 9        # 9 * d(=2) = 18 dims -> must match env.obs_dim
+      scalars: 0
+    rep_out:
+      scalars: 64       # latent width; feeds actor/critic heads
+    ekan_kwargs:
+      width: [64]       # use a list; e.g., [128, 128] for deeper EKAN
+      grid: 16
+      k: 3
