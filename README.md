@@ -10,6 +10,7 @@ We use the Multi-Agent Particle Environment (MPE) from PettingZoo, specifically 
 - Agents must avoid collisions with each other
 - Rewards encourage coverage while penalizing collisions
 
+EKANS code from [here](https://github.com/hulx2002/EKAN).
 
 ## Project Structure
 
