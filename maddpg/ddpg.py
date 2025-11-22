@@ -19,7 +19,7 @@ class DDPGAgent:
     def __init__(self, state_size, action_size, hidden_sizes=(64, 64), 
                  actor_lr=1e-4, critic_lr=1e-3, tau=1e-3,
                  centralized=False, total_state_size=None, total_action_size=None,
-                 action_low=None, action_high=None,critic_type="normal",actor_type="equivariant"):
+                 action_low=None, action_high=None,actor="traditional",critic="traditional"):
         """
         Initialize a DDPG agent.
         
@@ -47,7 +47,7 @@ class DDPGAgent:
         self.action_range = self.action_high - self.action_low
         
         # Actor Networks (Local and Target)
-        if actor_type=="equivariant":
+        if actor=="rotational equivariant":
             self.actor = RotationEqActor(state_size, action_size, hidden_sizes, 
                           action_low=self.action_low, 
                           action_high=self.action_high).to(device)
@@ -73,7 +73,7 @@ class DDPGAgent:
         #     critic_state_size = state_size
         #     critic_action_size = action_size
 
-        if critic_type=="p_invariant":
+        if critic=="permutation invariant":
             
             self.critic = PermutationInvCritic(critic_state_size, critic_action_size, hidden_sizes,3).to(device)
             self.critic_target = PermutationInvCritic(critic_state_size, critic_action_size, hidden_sizes,3).to(device)

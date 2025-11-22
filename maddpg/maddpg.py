@@ -15,7 +15,8 @@ class MADDPG:
     """
     def __init__(self, state_sizes, action_sizes, hidden_sizes=(64, 64), 
                  actor_lr=1e-4, critic_lr=1e-3, gamma=0.99, tau=1e-3, 
-                 action_low=-1.0, action_high=1.0):
+                 action_low=-1.0, action_high=1.0, actor="traditional",
+            critic="traditional"):
         """
         Initialize a MADDPG agent.
         
@@ -56,7 +57,9 @@ class MADDPG:
                 total_state_size=self.total_state_size,
                 total_action_size=self.total_action_size,
                 action_low=action_low,
-                action_high=action_high
+                action_high=action_high,
+                actor=actor,
+                critic=critic
             )
             self.agents.append(agent)
         

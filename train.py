@@ -119,7 +119,9 @@ def train(args):
             gamma=cfg.gamma,
             tau=cfg.tau,
             action_low=action_low,
-            action_high=action_high
+            action_high=action_high,
+            actor=cfg.actor,
+            critic=cfg.critic
         )
     
     
