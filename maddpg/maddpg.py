@@ -59,7 +59,8 @@ class MADDPG:
                 action_low=action_low,
                 action_high=action_high,
                 actor=actor,
-                critic=critic
+                critic=critic,
+                num_agents=self.num_agents
             )
             self.agents.append(agent)
         

@@ -78,7 +78,7 @@ class Actor(nn.Module):
         # Build the network
         self.fc1 = nn.Linear(state_size, hidden_sizes[0])
         self.fc2 = nn.Linear(hidden_sizes[0], hidden_sizes[1])
-        self.fc3 = nn.Linear(hidden_sizes[1], 2)
+        self.fc3 = nn.Linear(hidden_sizes[1], action_size)
         
         # Initialize weights
         self.apply(lambda m: init_weights(m, self.fc3, init_w))

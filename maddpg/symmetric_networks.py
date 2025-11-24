@@ -72,6 +72,7 @@ class RotationEqActor(nn.Module):
         # Action scaling parameters
         self.scale = (action_high - action_low) / 2
         self.bias  = (action_high + action_low) / 2
+        self.action_size = action_size
 
         # --- Define input and output representation types ---
         # T(1, 0) is the 2D vector representation of SO(2)
@@ -105,6 +106,19 @@ class RotationEqActor(nn.Module):
             ch=128,
             num_layers=num_layers
         )
+        
+        # If action_size > 2, we need to add communication actions
+        # Communication actions are scalars (not rotationally equivariant)
+        if action_size > 2:
+            comm_size = action_size - 2
+            self.comm_head = nn.Sequential(
+                nn.Linear(state_size, hidden_sizes[0] if isinstance(hidden_sizes, tuple) else hidden_sizes),
+                nn.ReLU(),
+                nn.Linear(hidden_sizes[0] if isinstance(hidden_sizes, tuple) else hidden_sizes, comm_size),
+                nn.Tanh()
+            )
+        else:
+            self.comm_head = None
 
     def forward(self, state):
         r"""
@@ -156,14 +170,25 @@ class RotationEqActor(nn.Module):
             comm[:, 0:1], comm[:, 1:2], comm[:, 2:3], comm[:, 3:4],
         ], dim=1)
 
-        # Pass through equivariant MLP
-        action = torch.tanh(self.emlp(x))
-
-        # Scale to action range
-        action = self.scale * action + self.bias
+        # Pass through equivariant MLP for 2D force vector
+        force_action = torch.tanh(self.emlp(x))
+        
+        # Scale force to action range
+        force_action = self.scale * force_action + self.bias
+        
+        # If we need communication actions, generate them separately
+        if self.comm_head is not None:
+            comm_action = self.comm_head(state)
+            # Scale communication actions to [0, 1] range (typical for communication)
+            comm_action = (comm_action + 1) / 2  # Scale from [-1, 1] to [0, 1]
+            
+            # Concatenate force and communication actions
+            action = torch.cat([force_action, comm_action], dim=-1)
+        else:
+            action = force_action
 
         # Remove batch dimension if originally absent
-        if action.shape[0] == 1:
+        if action.shape[0] == 1 and state.dim() == 2:
             action = action.squeeze(0)
 
         return action
@@ -329,7 +354,7 @@ class PermutationInvCritic(nn.Module):
         - Centralized training, decentralized execution (CTDE)
     """
     def __init__(self, state_size, action_size, hidden_size, num_agents):
-        super(PCritic, self).__init__()
+        super(PermutationInvCritic, self).__init__()
 
         self.num_agents = num_agents
 

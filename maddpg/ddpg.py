@@ -19,7 +19,8 @@ class DDPGAgent:
     def __init__(self, state_size, action_size, hidden_sizes=(64, 64), 
                  actor_lr=1e-4, critic_lr=1e-3, tau=1e-3,
                  centralized=False, total_state_size=None, total_action_size=None,
-                 action_low=None, action_high=None,actor="traditional",critic="traditional"):
+                 action_low=None, action_high=None,actor="traditional",critic="traditional",
+                 num_agents=None):
         """
         Initialize a DDPG agent.
         
@@ -35,6 +36,9 @@ class DDPGAgent:
             total_action_size (int): Total dimension of all agents' actions (for centralized critic)
             action_low (float or array): Lower bound of the action space (default: -1.0)
             action_high (float or array): Upper bound of the action space (default: 1.0)
+            actor (str): Actor architecture type ("traditional" or "rotational equivariant")
+            critic (str): Critic architecture type ("traditional" or "permutation invariant")
+            num_agents (int): Number of agents in the multi-agent system (required for permutation invariant critic)
         """
         self.state_size = state_size
         self.action_size = action_size
@@ -74,9 +78,10 @@ class DDPGAgent:
         #     critic_action_size = action_size
 
         if critic=="permutation invariant":
-            
-            self.critic = PermutationInvCritic(critic_state_size, critic_action_size, hidden_sizes,3).to(device)
-            self.critic_target = PermutationInvCritic(critic_state_size, critic_action_size, hidden_sizes,3).to(device)
+            if num_agents is None:
+                raise ValueError("num_agents must be provided when using permutation invariant critic")
+            self.critic = PermutationInvCritic(critic_state_size, critic_action_size, hidden_sizes, num_agents).to(device)
+            self.critic_target = PermutationInvCritic(critic_state_size, critic_action_size, hidden_sizes, num_agents).to(device)
         else:
             self.critic = Critic(critic_state_size, critic_action_size, hidden_sizes).to(device)
             self.critic_target = Critic(critic_state_size, critic_action_size, hidden_sizes).to(device)
