@@ -5,7 +5,7 @@ class Config:
         self.env_name = "simple_spread_v3"
 
         # training settings
-        self.total_timesteps = int(1e6)
+        self.total_timesteps = int(1e5)
         # total_timesteps	1500000
 
         self.buffer_size = int(1e6)
