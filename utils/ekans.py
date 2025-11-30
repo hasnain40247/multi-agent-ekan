@@ -1,5 +1,5 @@
-from ekan.groups import SO, O, SO13, SO13p, Lorentz
-from ekan.representation import Vector, Scalar
+from legacy.ekan.groups import SO, O, SO13, SO13p, Lorentz
+from legacy.ekan.representation import Vector, Scalar
 
 def _make_group(name: str):
     """Map YAML string to EKAN group object."""
@@ -28,7 +28,6 @@ def _rep_size(rep) -> int:
 
 def _build_rep_from_counts(vectors: int, scalars: int):
     """Build a representation: vectors * Vector  +  scalars * Scalar."""
-    print(vectors, scalars)
     rep = None
     if vectors and vectors > 0:
         rep = vectors * Vector
@@ -86,13 +85,16 @@ def build_ekan_parts(cfg: dict, obs_dim: int):
 
     # rep_out,default to hidden_dim * Scalar if not specified
     rout = cfg.get("rep_out", None)
-    if rout is None or "scalars" not in rout:
+    if rout is None:
         hidden_dim = int(cfg.get("hidden_dim", 64))
         rep_out_sym = hidden_dim * Scalar
     else:
-        rep_out_sym = _build_rep_from_counts(vectors=0, scalars=int(rout["scalars"]))
+        # Support both vectors and scalars in rep_out
+        rout_vec = int(rout.get("vectors", 0))
+        rout_sca = int(rout.get("scalars", 0))
+        rep_out_sym = _build_rep_from_counts(rout_vec, rout_sca)
         if rep_out_sym is None:
-            # fall back to hidden_dim if user mistakenly set scalars: 0
+            # fall back to hidden_dim if user mistakenly set both to 0
             hidden_dim = int(cfg.get("hidden_dim", 64))
             rep_out_sym = hidden_dim * Scalar
     rep_out = rep_out_sym(group)

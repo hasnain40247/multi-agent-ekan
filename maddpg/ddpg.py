@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import os
 
-from maddpg.symmetric_networks import RotationEqActor, PermutationInvCritic
+from maddpg.symmetric_networks import RotationEqActor, PermutationInvCritic, EKANActor
 from .networks import Actor, Critic
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -56,6 +56,13 @@ class DDPGAgent:
                           action_low=self.action_low, 
                           action_high=self.action_high).to(device)
             self.actor_target = RotationEqActor(state_size, action_size, hidden_sizes,
+                                    action_low=self.action_low, 
+                                    action_high=self.action_high).to(device)
+        elif actor=="ekan":
+            self.actor = EKANActor(state_size, action_size, hidden_sizes, 
+                          action_low=self.action_low, 
+                          action_high=self.action_high).to(device)
+            self.actor_target = EKANActor(state_size, action_size, hidden_sizes,
                                     action_low=self.action_low, 
                                     action_high=self.action_high).to(device)
         else:

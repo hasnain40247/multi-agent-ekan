@@ -9,7 +9,7 @@ from tqdm import tqdm
 from datetime import datetime
 
 
-
+from utils.config import load_config
 from configs.config import Config
 from maddpg import MADDPG, ReplayBuffer
 from utils.env import get_env_info, ENV_MAP, create_single_env
@@ -22,7 +22,7 @@ def parse_args():
         "--actor",
         type=str,
         default="traditional",
-        choices=["traditional", "rotational equivariant"],
+        choices=["traditional", "rotational equivariant", "ekan"],
         help="Choose actor architecture"
     )
 
@@ -47,7 +47,8 @@ def train(args):
     
     cfg = Config()
     cfg.apply_cli(args)
-
+    ekans_cfg = load_config("configs/experiment.yaml")["model"]["ekan"]
+    print(ekans_cfg)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     experiment_name = (

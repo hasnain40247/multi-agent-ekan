@@ -7,6 +7,10 @@ from emlp.reps import T
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
+from legacy.ekan import EKAN
+from legacy.ekan.groups import SO as EKAN_SO
+from legacy.ekan.representation import Vector, Scalar
+from utils.ekans import build_ekan_parts
 
 class RotationEqActor(nn.Module):
     r"""
@@ -172,6 +176,262 @@ class RotationEqActor(nn.Module):
 
         # Pass through equivariant MLP for 2D force vector
         force_action = torch.tanh(self.emlp(x))
+        
+        # Scale force to action range
+        force_action = self.scale * force_action + self.bias
+        
+        # If we need communication actions, generate them separately
+        if self.comm_head is not None:
+            comm_action = self.comm_head(state)
+            # Scale communication actions to [0, 1] range (typical for communication)
+            comm_action = (comm_action + 1) / 2  # Scale from [-1, 1] to [0, 1]
+            
+            # Concatenate force and communication actions
+            action = torch.cat([force_action, comm_action], dim=-1)
+        else:
+            action = force_action
+
+        # Remove batch dimension if originally absent
+        if action.shape[0] == 1 and state.dim() == 2:
+            action = action.squeeze(0)
+
+        return action
+
+class EKANActor(nn.Module):
+    r"""
+    Rotationally equivariant actor network using EKAN (Equivariant Kolmogorov-Arnold Network)
+    that outputs a 2-D action vector (fx, fy), transforming under the standard SO(2) vector representation.
+
+    This module uses EKAN from the legacy implementation to guarantee that the output action
+    transforms *equivariantly* with respect to rotations applied to the input state.
+    In other words, if the entire spatial state (positions, velocities, etc.) is rotated
+    by some θ ∈ SO(2), the output action will also rotate by the same θ.
+
+    **Where and how the equivariance happens**
+    -----------------------------------------
+    Equivariance is enforced *entirely inside the EKAN architecture*:
+
+    * The input representation `rep_in` is a direct sum of SO(2) vector reps (for
+      2-D geometric quantities) and scalar reps (for rotation-invariant quantities).
+    * The output representation `rep_out` is an SO(2) vector rep.
+    * The `EKAN` constructor uses these representations + the `SO(2)` group to build:
+        - **Equivariant linear layers**, whose weight matrices are constrained to
+          commute with the group action.
+        - **Equivariant spline-based activations**, guaranteeing that each layer preserves
+          equivariance.
+    * As a result, the entire mapping `x → ekan(x)` is equivariant under SO(2).
+
+    Parameters
+    ----------
+    state_size : int
+        Dimensionality of the input state (default: 18).
+    action_size : int
+        Dimensionality of the output action (default: 2).
+    hidden_sizes : tuple
+        Hidden channel sizes for EKAN width parameter (converted to list).
+    init_w : float
+        Unused here, but kept for interface compatibility.
+    action_low : float
+        Minimum value of each action dimension.
+    action_high : float
+        Maximum value of each action dimension.
+    num_layers : int
+        Number of EKAN layers (determined by len(hidden_sizes)).
+
+    Notes
+    -----
+    The actor assumes a state layout of:
+        - self velocity: 2D vector
+        - self position: 2D vector
+        - 3× landmarks: 2D vectors each → 6 dims
+        - 2× other agents: 2D vectors each → 4 dims
+        - 4× communication scalars: 4 dims
+
+    These features are concatenated in an order that matches the declared
+    representation structure in `rep_in`.
+    """
+
+    def __init__(self, state_size=18, action_size=2,
+                 hidden_sizes=(128,), init_w=3e-3,
+                 action_low=-1, action_high=1,
+                 num_layers=2):
+        super().__init__()
+
+        # Action scaling parameters
+        self.scale = (action_high - action_low) / 2
+        self.bias  = (action_high + action_low) / 2
+        self.action_size = action_size
+
+        # Device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Build EKAN config dict matching the state structure
+        # State: 7 vectors (self_vel, self_pos, 3 landmarks, 2 other agents) + 4 scalars (comm) = 18 dims
+        # Output: 1 vector (2D action) = 2 dims
+        ekan_cfg = {
+            "group": "SO2",
+            "rep_in": {
+                "vectors": 7,
+                "scalars": 4
+            },
+            "rep_out": {
+                "vectors": 1,
+                "scalars": 0
+            },
+            "ekan_kwargs": {}
+        }
+
+        # Convert hidden_sizes to width format
+        if isinstance(hidden_sizes, tuple):
+            width = list(hidden_sizes)
+        elif isinstance(hidden_sizes, int):
+            width = [hidden_sizes]
+        else:
+            width = list(hidden_sizes)
+
+        # Adjust width based on num_layers
+        if num_layers > 1:
+            if len(width) < num_layers:
+                width = width + [width[-1]] * (num_layers - len(width))
+            elif len(width) > num_layers:
+                width = width[:num_layers]
+
+        # Set EKAN kwargs with defaults
+        ekan_cfg["ekan_kwargs"] = {
+            "width": width,
+            "grid": 3,
+            "k": 3,
+            "grid_eps": 1.0,
+            "grid_range": [-1, 1]
+        }
+
+        # Use build_ekan_parts to parse config and get representations
+        rep_in_concrete, rep_out_concrete, group, ekan_kwargs = build_ekan_parts(ekan_cfg, state_size)
+
+        # Store group for reference
+        self.group = group
+
+        # EKAN expects callables that take a group, but build_ekan_parts returns concrete reps
+        # Create callables that return the already-bound representations
+        def make_rep_callable(concrete_rep):
+            return lambda g: concrete_rep
+
+        # Merge ekan_kwargs with defaults
+        final_kwargs = {
+            "width": ekan_kwargs.get("width", width),
+            "grid": ekan_kwargs.get("grid", 3),
+            "k": ekan_kwargs.get("k", 3),
+            "base_fun": torch.nn.SiLU(),
+            "grid_eps": ekan_kwargs.get("grid_eps", 1.0),
+            "grid_range": ekan_kwargs.get("grid_range", [-1, 1]),
+            "device": self.device,
+            "seed": 0,
+            "classify": False
+        }
+
+        # Build EKAN network with representations from build_ekan_parts
+        self.ekan = EKAN(
+            rep_in=make_rep_callable(rep_in_concrete),
+            rep_out=make_rep_callable(rep_out_concrete),
+            group=group,
+            **final_kwargs
+        )
+        
+        # If action_size > 2, we need to add communication actions
+        # Communication actions are scalars (not rotationally equivariant)
+        if action_size > 2:
+            comm_size = action_size - 2
+            self.comm_head = nn.Sequential(
+                nn.Linear(state_size, hidden_sizes[0] if isinstance(hidden_sizes, tuple) else hidden_sizes),
+                nn.ReLU(),
+                nn.Linear(hidden_sizes[0] if isinstance(hidden_sizes, tuple) else hidden_sizes, comm_size),
+                nn.Tanh()
+            )
+        else:
+            self.comm_head = None
+
+    def train(self, mode=True):
+        """
+        Override train() to handle PyTorch's training mode switching.
+        EKAN has its own train() method for training with datasets, so we need
+        to properly handle PyTorch's train/eval mode.
+        """
+        # Use nn.Module's train() method directly by calling super()
+        # This sets _training flag and recursively calls train() on submodules
+        # But we need to avoid calling EKAN's train() method
+        self.training = mode
+        for name, module in self.named_children():
+            if name == 'ekan':
+                # For EKAN, manually set training mode on its submodules
+                for ekan_module in module.modules():
+                    if ekan_module != module and hasattr(ekan_module, 'training'):
+                        ekan_module.training = mode
+            else:
+                # For other modules (comm_head), use standard train()
+                module.train(mode)
+        return self
+
+    def eval(self):
+        """
+        Override eval() to handle PyTorch's evaluation mode switching.
+        """
+        return self.train(False)
+
+    def forward(self, state):
+        r"""
+        Forward pass through the actor.
+
+        Parameters
+        ----------
+        state : torch.Tensor
+            Shape (batch, 18) containing positions, velocities, landmarks,
+            other agents, and scalar comm features.
+
+        Returns
+        -------
+        action : torch.Tensor
+            Shape (batch, 2). A rotationally equivariant 2-D action vector.
+
+            The equivariance holds because the *internal mapping* `ekan(x)` is
+            SO(2)-equivariant. The final tanh + affine scaling does not break
+            equivariance because it acts component-wise and preserves the
+            vector transformation properties.
+        """
+
+        # Ensure batch dimension
+        if state.dim() == 1:
+            state = state.unsqueeze(0)
+
+        # Move state to device
+        state = state.to(self.device)
+
+        # --- Extract and label each block of the state ---
+        v_self = state[:, 0:2]     # SO(2) vector
+        p_self = state[:, 2:4]     # SO(2) vector
+        lmk    = state[:, 4:10]   # 3 × 2D landmark vectors
+        other  = state[:, 10:14]   # 2 × 2D other-agent vectors
+        comm   = state[:, 14:18]  # 4 scalar features
+
+        # Split landmarks
+        l1 = lmk[:, 0:2]
+        l2 = lmk[:, 2:4]
+        l3 = lmk[:, 4:6]
+
+        # Split other agents
+        o1 = other[:, 0:2]
+        o2 = other[:, 2:4]
+
+        # Build input in the *exact representation order* required by `rep_in`.
+        # Order matters because EKAN uses representation structure to enforce symmetry.
+        x = torch.cat([
+            v_self, p_self,
+            l1, l2, l3,
+            o1, o2,
+            comm[:, 0:1], comm[:, 1:2], comm[:, 2:3], comm[:, 3:4],
+        ], dim=1)
+
+        # Pass through equivariant EKAN for 2D force vector
+        force_action = torch.tanh(self.ekan(x))
         
         # Scale force to action range
         force_action = self.scale * force_action + self.bias
@@ -392,4 +652,3 @@ class PermutationInvCritic(nn.Module):
         # Feed through permutation-invariant GNN
         V = self.net(x)
         return V
-
