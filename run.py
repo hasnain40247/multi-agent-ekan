@@ -15,7 +15,7 @@ from utils.env import create_single_env, ENV_MAP, get_env_info
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, 
-                       default="runs/simple_spread_v3/maddpg/single_b256_usteps15_g0.95_t0.01_alr0.001_clr0.002_n0.3_minn0.01_h64,64_20250314_233402/model.pt",
+                       default="outputs/runs/simple_spread_v3/maddpg/single_b256_usteps15_g0.95_t0.01_alr0.001_clr0.002_n0.3_minn0.01_h64,64_20250314_233402/model.pt",
                        help="Path to the trained model file")
     parser.add_argument("--env-name", type=str, default="simple_spread_v3", 
                        choices=list(ENV_MAP.keys()),

@@ -28,7 +28,7 @@ class Logger:
     def __init__(
          self,
         run_name=datetime.now().strftime("%Y-%m-%d_%H%M%S"),
-        folder="runs",
+        folder="outputs/runs",
         algo="sac",
         env="Env",
         save_csv=False,

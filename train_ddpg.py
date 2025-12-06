@@ -60,7 +60,7 @@ def train(args):
 
     logger = Logger(
         run_name=experiment_name,
-        folder="runs",
+        folder="outputs/runs",
         algo="DDPG",
         env=args.env_name
     )
