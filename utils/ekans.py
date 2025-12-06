@@ -1,5 +1,5 @@
-from legacy.ekan.groups import SO, O, SO13, SO13p, Lorentz
-from legacy.ekan.representation import Vector, Scalar
+from ekan.groups import SO, O, SO13, SO13p, Lorentz
+from ekan.representation import Vector, Scalar
 
 def _make_group(name: str):
     """Map YAML string to EKAN group object."""

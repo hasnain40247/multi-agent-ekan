@@ -7,9 +7,9 @@ from emlp.reps import T
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
-from legacy.ekan import EKAN
-from legacy.ekan.groups import SO as EKAN_SO
-from legacy.ekan.representation import Vector, Scalar
+from ekan import EKAN
+from ekan.groups import SO as EKAN_SO
+from ekan.representation import Vector, Scalar
 from utils.ekans import build_ekan_parts
 
 class RotationEqActor(nn.Module):
