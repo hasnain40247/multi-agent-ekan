@@ -9,7 +9,7 @@ def main(path="invariance_results.json"):
         res = json.load(f)
 
     # make sure output dir exists
-    out_dir = "plots/eval"
+    out_dir = "output/plots/eval"
     os.makedirs(out_dir, exist_ok=True)
 
     cfgA = "EKAN+PIcritic"
