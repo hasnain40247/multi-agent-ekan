@@ -26,7 +26,7 @@ def parse_args():
     # Shared arguments
     parser.add_argument('--window-size', type=int, default=100,
                         help='Window size for running average')
-    parser.add_argument('--output-dir', type=str, default='./plots',
+    parser.add_argument('--output-dir', type=str, default='./outputs/plots',
                         help='Directory to save plots')
     parser.add_argument('--target-score', type=int, default=None,
                         help='Target score for single mode')
