@@ -13,15 +13,16 @@ from utils.env import create_single_env, get_env_info
 
 
 """
-This script evaluates geometric invariance properties of two trained MADDPG models:
-one using an EKAN actor with a permutation-invariant critic (Run A),
-and one using an EKAN actor with a traditional critic (Run B).
+This script evaluates geometric invariance properties of three trained MADDPG models:
+  Run A: EKAN actor + permutation-invariant (GCN) critic
+  Run B: EKAN actor + traditional critic
+  Run C: traditional actor + traditional critic
 
 The script performs the following:
 
 1. Load Models
-   - Loads checkpoints for Run A and Run B.
-   - Infers EKAN hidden dimensions from checkpoint weights.
+   - Loads checkpoints for Run A, Run B, Run C.
+   - Infers hidden dimensions from checkpoint weights when needed.
    - Builds corresponding MADDPG agents and loads parameters.
 
 2. Define Rotation & Permutation Utilities
@@ -47,13 +48,13 @@ The script performs the following:
    - Stores all results in a JSON file including:
      * actor equivariance metrics,
      * critic permutation invariance metrics,
-     * inferred EKAN hidden sizes,
+     * inferred hidden sizes,
      * environment and test configuration.
 
 """
 
 
-#  small linear algebra helpers 
+#  small linear algebra helpers
 
 
 def rot2(theta: float):
@@ -113,7 +114,7 @@ def permute_blocks(
     return np.concatenate(blocks, axis=0)
 
 
-#  checkpoint inspection & arch inference 
+#  checkpoint inspection & arch inference
 
 
 def _get_actor_sd(ckpt: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -139,7 +140,7 @@ def _get_actor_sd(ckpt: Dict[str, Any]) -> Dict[str, torch.Tensor]:
 
 def infer_head_hidden_from_ckpt(ckpt_path: str) -> int:
     """
-    Infer the first head hidden width from comm_head.0.weight shape.
+    EKAN-specific: infer the first head hidden width from comm_head.0.weight shape.
     """
     payload = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = _get_actor_sd(payload)
@@ -154,9 +155,33 @@ def infer_head_hidden_from_ckpt(ckpt_path: str) -> int:
     return int(w.shape[0])
 
 
+def infer_hidden_from_first_linear(ckpt_path: str) -> int:
+    """
+    Generic hidden-size inference for traditional MLP actors:
+    pick the first 2D weight tensor and return its out_features.
+    """
+    payload = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    sd = _get_actor_sd(payload)
+
+    candidates = []
+    for k, v in sd.items():
+        if hasattr(v, "shape") and len(v.shape) == 2:
+            candidates.append((k, v))
+
+    if not candidates:
+        raise RuntimeError(
+            "Could not find any 2D weight tensors in actor state_dict for traditional actor."
+        )
+
+    k0, v0 = candidates[0]
+    print(f"[infer_hidden_from_first_linear] Using {k0} with shape {tuple(v0.shape)}")
+    return int(v0.shape[0])
+
+
 def print_ekan_hints(ckpt_path: str, tag: str):
     """
     Print EKAN layer hints so you can align EKAN config (width/grid/k) if needed.
+    For traditional actors, this may print nothing (which is fine).
     """
     payload = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = _get_actor_sd(payload)
@@ -174,7 +199,7 @@ def print_ekan_hints(ckpt_path: str, tag: str):
     print("== end EKAN hints ==\n")
 
 
-#  MADDPG build/load wrappers 
+#  MADDPG build/load wrappers
 
 
 def build_maddpg_for_run(
@@ -209,7 +234,7 @@ def load_into(maddpg: MADDPG, ckpt_path: str):
     maddpg.load(ckpt_path)
 
 
-#  actor & critic tests 
+#  actor & critic tests
 
 
 def maddpg_act(
@@ -270,12 +295,14 @@ def actor_equivariance_test(
             truncations = _[1]
             if all(terminations.values()) or all(truncations.values()):
                 obs, _ = env.reset()
-            return {
-                "theta_deg": theta_deg,
-                "mean_L2": float(np.mean(errors)),
-                "max_L2": float(np.max(errors)),
-                "per_batch_L2": [float(e) for e in errors],
-            }
+
+    # NOTE: return moved outside loop so we actually use n_batches
+    return {
+        "theta_deg": theta_deg,
+        "mean_L2": float(np.mean(errors)),
+        "max_L2": float(np.max(errors)),
+        "per_batch_L2": [float(e) for e in errors],
+    }
 
 
 def critic_permutation_test(
@@ -331,7 +358,7 @@ def critic_permutation_test(
     }
 
 
-#  CLI & main 
+#  CLI & main
 
 
 def parse_pairs(spec: str, n_agents: int) -> Dict[int, List[Tuple[int, int]]]:
@@ -372,7 +399,7 @@ def parse_args():
     ap.add_argument("--obs-xy", default="", help="Same format for observations.")
     ap.add_argument("--device", default="cpu")
 
-    # two runs:
+    # three runs:
     ap.add_argument(
         "--runA_dir",
         required=True,
@@ -382,6 +409,11 @@ def parse_args():
         "--runB_dir",
         required=True,
         help="Folder with best_model.pt or model.pt for EKAN actor + Trad critic",
+    )
+    ap.add_argument(
+        "--runC_dir",
+        required=True,
+        help="Folder with best_model.pt or model.pt for Trad actor + Trad critic",
     )
 
     # batches / rotation
@@ -415,14 +447,19 @@ if __name__ == "__main__":
 
     ckpt_A = pick_ckpt(args.runA_dir)
     ckpt_B = pick_ckpt(args.runB_dir)
+    ckpt_C = pick_ckpt(args.runC_dir)
 
     # Infer per-run hidden widths from checkpoints to avoid mismatches
-    head_A = infer_head_hidden_from_ckpt(ckpt_A)  # e.g., 64
-    head_B = infer_head_hidden_from_ckpt(ckpt_B)  # could differ
+    head_A = infer_head_hidden_from_ckpt(ckpt_A)  # EKAN
+    head_B = infer_head_hidden_from_ckpt(ckpt_B)  # EKAN
+    head_C = infer_hidden_from_first_linear(ckpt_C)
+
+    print(f"[head widths] A={head_A}, B={head_B}, C={head_C}")
 
     # Print EKAN hints so you can confirm matching config
     print_ekan_hints(ckpt_A, "Run A (EKAN + PI critic)")
     print_ekan_hints(ckpt_B, "Run B (EKAN + Traditional critic)")
+    print_ekan_hints(ckpt_C, "Run C (Traditional actor + Traditional critic)")
 
     # Build MADDPG for each run with matching hidden sizes
     maddpg_A = build_maddpg_for_run(
@@ -443,10 +480,20 @@ if __name__ == "__main__":
         actor_kind="ekan",
         critic_kind="traditional",
     )
+    maddpg_C = build_maddpg_for_run(
+        state_sizes,
+        action_sizes,
+        action_low,
+        action_high,
+        hidden_sizes=(head_C, head_C),
+        actor_kind="traditional",
+        critic_kind="traditional",
+    )
 
     # Load checkpoints (strict)
     maddpg_A.load(ckpt_A)
     maddpg_B.load(ckpt_B)
+    maddpg_C.load(ckpt_C)
 
     # Parse XY index pairs
     obs_xy = parse_pairs(args.obs_xy, n_agents)
@@ -470,6 +517,16 @@ if __name__ == "__main__":
         n_batches=args.n_actor_batches,
         theta_deg=args.theta_deg,
     )
+    print("Actor B equivariance:", actorB)
+    actorC = actor_equivariance_test(
+        maddpg_C,
+        args.env_name,
+        obs_xy,
+        act_xy,
+        n_batches=args.n_actor_batches,
+        theta_deg=args.theta_deg,
+    )
+    print("Actor C equivariance:", actorC)
 
     # Critic permutation invariance (swap first two agents if available)
     perm = list(range(n_agents))
@@ -486,6 +543,14 @@ if __name__ == "__main__":
     )
     criticB = critic_permutation_test(
         maddpg_B,
+        args.env_name,
+        state_sizes,
+        action_sizes,
+        perm,
+        n_batches=args.n_critic_batches,
+    )
+    criticC = critic_permutation_test(
+        maddpg_C,
         args.env_name,
         state_sizes,
         action_sizes,
@@ -512,6 +577,11 @@ if __name__ == "__main__":
             "actor_SO2_equivariance": actorB,
             "critic_perm_invariance": criticB,
             "head_hidden_inferred": head_B,
+        },
+        "TradActor+Tradcritic": {
+            "actor_SO2_equivariance": actorC,
+            "critic_perm_invariance": criticC,
+            "head_hidden_inferred": head_C,
         },
     }
 
