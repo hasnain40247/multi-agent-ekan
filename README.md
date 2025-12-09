@@ -48,7 +48,7 @@ python train.py --actor traditional --critic traditional
 Arguments that can be provided to the actor include:
  - traditional
  - ekan
- - rotational equivariant
+ - "rotational equivariant"
 
 Arguments that can be provided to the critic include.
 - traditional
