@@ -39,10 +39,10 @@ EKANS code from [here](https://github.com/hulx2002/EKAN).
 
 The main script is executed as a Python module with config file to run experiments. Use `config.py` to update configs on training.
 
-### Basic Command
+### Basic Command (To Run EKAN)
 
 ```bash
-python train.py --actor traditional --critic traditional
+python train.py --actor "[traditional,ekan]" --critic "[traditional,permutation invariant]"
 ```
 
 Arguments that can be provided to the actor include:
@@ -53,3 +53,14 @@ Arguments that can be provided to the actor include:
 Arguments that can be provided to the critic include.
 - traditional
 - "permutation invariant"
+
+### Basic Command (To Run EGNN/EMLP)
+
+```bash
+cd egnn_emlp_actor_variants
+```
+Here, we have our ```main.py``` which has custom hyperparameters as well as argumnents that you can change to run specific variants.
+
+```bash
+python main.py --actor_type "[mlp,emlp,egnn]" --critic_type "[mlp,gcn_max]"
+```
